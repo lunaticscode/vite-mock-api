@@ -1,0 +1,17 @@
+{
+  "compilerOptions": {
+    "target": "esnext",
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "sourceMap": true,
+    "resolveJsonModule": true,
+    "esModuleInterop": true,
+    "strictNullChecks": false,
+    "declaration": true,
+    "noEmit": false,
+    "lib": ["esnext", "dom"],
+    "outDir": "vite-mock-api"
+  },
+  "include": ["src/**/*.ts"]
+}
