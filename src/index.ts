@@ -1,7 +1,18 @@
-import { PluginOption, ViteDevServer } from "vite";
+import { Connect, PluginOption, ViteDevServer } from "vite";
 import { IncomingMessage, ServerResponse } from "http";
-import { writeFileSync } from "node:fs";
+import path from "node:path";
+import { writeFileSync, watchFile } from "node:fs";
 import { build } from "esbuild";
+
+export type MockApiPluginOptions = {
+  mockFilesDir?: string;
+  middlewares?: Connect.NextHandleFunction[];
+};
+
+export interface MockApiPlugin {
+  (): PluginOption;
+  (options?: MockApiPluginOptions): PluginOption;
+}
 
 export type MockApiHandlerRequest = IncomingMessage & {
   params?: { [key: string]: string };
@@ -58,49 +69,87 @@ const getMergedHandlerResponse = (res: ServerResponse<IncomingMessage>) => {
   return mergedResponse;
 };
 
-const setMockHandlers = async (server: ViteDevServer) => {
-  try {
-    const mockDir = `${server.config.root + "/mock-api"}`;
-    const result = await build({
-      entryPoints: [`${mockDir}/index.ts`],
-      write: false,
-      platform: "node",
-      bundle: true,
-      format: "cjs",
-      metafile: true,
-      target: "es2015",
+const setHandlerInMiddleware = async (
+  server: ViteDevServer,
+  mockFilesDir: MockApiPluginOptions["mockFilesDir"]
+) => {
+  const mockDir = path.join(server.config.root, mockFilesDir);
+  const mockRootFile = path.join(mockDir, "index.ts");
+  const result = await build({
+    entryPoints: [mockRootFile],
+    write: false,
+    platform: "node",
+    bundle: true,
+    format: "cjs",
+    metafile: true,
+    target: "es2015",
+  });
+  const { text } = result.outputFiles[0];
+  writeFileSync(`${mockDir}/index.cjs`, text);
+
+  const handlersModule = (await import(
+    `${path.join(mockDir, "index.cjs")}`
+  )) as {
+    default: MockHandler[] | { default: MockHandler[] };
+  };
+
+  let handlers = handlersModule.default;
+  if ("default" in handlers) {
+    handlers = handlers.default;
+  }
+
+  for (const { path: apiPath, handler: apiHandler } of handlers) {
+    server.middlewares.use(apiPath, (req, res) => {
+      const [handlerReq, handlerRes] = [
+        getMergedHandlerRequest(req),
+        getMergedHandlerResponse(res),
+      ];
+
+      return apiHandler(handlerReq, handlerRes);
     });
-    const { text } = result.outputFiles[0];
-    writeFileSync(`${mockDir}/index.cjs`, text);
+  }
+};
 
-    const handlersModule = (await import(
-      `${server.config.root + "/mock-api/index.cjs"}`
-    )) as {
-      default: MockHandler[] | { default: MockHandler[] };
-    };
+const mockFileWatcher = async (
+  server: ViteDevServer,
+  mockFilesDir: MockApiPluginOptions["mockFilesDir"]
+) => {
+  setHandlerInMiddleware(server, mockFilesDir);
+};
 
-    let handlers = handlersModule.default;
-    if ("default" in handlers) {
-      handlers = handlers.default;
+const setMockHandlers = async (
+  server: ViteDevServer,
+  options?: MockApiPluginOptions
+) => {
+  const { mockFilesDir = "mock-api", middlewares = [] } = options || {
+    mockFilesDir: "mock-api",
+    middlewares: [],
+  };
+
+  try {
+    // Setup added third-party library(ex. body-parser) in middleware.
+    for (const middleware of middlewares) {
+      server.middlewares.use(middleware);
     }
 
-    for (const { path: apiPath, handler: apiHandler } of handlers) {
-      server.middlewares.use(apiPath, (req, res) => {
-        const [handlerReq, handlerRes] = [
-          getMergedHandlerRequest(req),
-          getMergedHandlerResponse(res),
-        ];
+    // Define mock files directory from Plugin option.
+    const mockDir = path.join(server.config.root, mockFilesDir);
+    const mockRootFile = path.join(mockDir, "index.ts");
 
-        return apiHandler(handlerReq, handlerRes);
-      });
-    }
+    // Setup mock api handler in vite-middleware.
+    await setHandlerInMiddleware(server, mockFilesDir);
+
+    // Observe mock handler file, then exec setHandlerInMiddleware().
+    watchFile(mockRootFile, () => mockFileWatcher(server, mockFilesDir));
   } catch (err) {
-    console.error(`Cannot set mock handlers from "/mock-api" index file`);
+    console.error(`Cannot set mock handlers.`);
     console.error(err);
   }
 };
 
-const mockApiPlugin = (): PluginOption => {
+const mockApiPlugin: MockApiPlugin = (...args) => {
+  const options = (args[0] as MockApiPluginOptions | undefined) || undefined;
+
   return {
     name: "vite-mock-api",
     apply: (config) => {
@@ -108,7 +157,7 @@ const mockApiPlugin = (): PluginOption => {
     },
     configureServer: async (server: ViteDevServer) => {
       try {
-        await setMockHandlers(server);
+        await setMockHandlers(server, options);
       } catch (err) {
         console.error(err);
       }

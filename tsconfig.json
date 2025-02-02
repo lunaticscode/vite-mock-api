@@ -11,7 +11,7 @@
     "declaration": true,
     "noEmit": false,
     "lib": ["esnext", "dom"],
-    "outDir": "vite-mock-api"
+    "outDir": "build"
   },
   "include": ["src/**/*.ts"]
 }

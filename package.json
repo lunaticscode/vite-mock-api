@@ -6,14 +6,21 @@
   "type": "module",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "build": "tsc -p ."
+    "build": "tsc -p .",
+    "cleanup": "rm -rf build dist",
+    "build-rollup": "pnpm run cleanup && tsc && rollup --config && node post-build.js"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "devDependencies": {
+    "@rollup/plugin-typescript": "^12.1.2",
     "@types/node": "^22.13.0",
     "esbuild": "^0.24.2",
+    "rollup": "^4.34.0",
+    "rollup-plugin-dts": "^6.1.1",
+    "rollup-plugin-terser": "^7.0.2",
+    "tslib": "^2.8.1",
     "typescript": "^5.7.3",
     "vite": "^6.0.11"
   }
