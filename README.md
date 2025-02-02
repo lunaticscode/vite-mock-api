@@ -4,7 +4,7 @@
 
 ## :package: NPM Package
 
-(Coming Soon) – This package will be available on [NPM](https://www.npmjs.com/).
+This package will be available on [NPM](https://www.npmjs.com/package/vite-mock-api).
 
 ## Features
 
